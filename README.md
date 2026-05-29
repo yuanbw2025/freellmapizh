@@ -1,14 +1,12 @@
 <div align="center">
 
-# FreeLLMAPI
+# FreeLLMAPI 中文版 / FreeLLMAPI Chinese Edition
 
-**One OpenAI-compatible endpoint. Twelve free LLM providers. ~1B+ tokens per month.**
+**一个 OpenAI 兼容入口，聚合多个免费/低门槛 LLM Provider，自动路由、自动 fallback、统一密钥管理。**
 
-Aggregate the free tiers from Google, Groq, Cerebras, SambaNova, NVIDIA, Mistral, OpenRouter, GitHub Models, Cohere, Cloudflare, HuggingFace, and Z.ai (Zhipu) behind a single `/v1/chat/completions` endpoint. Keys are stored encrypted. A router picks the best available model for each request, falls over to the next provider when one is rate-limited, and tracks per-key usage so you stay under every free-tier cap.
+**One OpenAI-compatible endpoint for multiple free or low-barrier LLM providers, with automatic routing, fallback, and unified key management.**
 
-[![CI](https://github.com/tashfeenahmed/freellmapi/actions/workflows/ci.yml/badge.svg)](https://github.com/tashfeenahmed/freellmapi/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
 ![Fallback chain with per-provider token budget](repo-assets/fallback-chain.png)
 
@@ -16,111 +14,252 @@ Aggregate the free tiers from Google, Groq, Cerebras, SambaNova, NVIDIA, Mistral
 
 ---
 
-## Contents
+## 中文说明
 
-- [Why this exists](#why-this-exists)
-- [Supported providers](#supported-providers)
-- [Features](#features)
-- [Not yet supported](#not-yet-supported)
-- [Quick start](#quick-start)
-- [Using the API](#using-the-api)
-- [Screenshots](#screenshots)
-- [How it works](#how-it-works)
-- [Limitations](#limitations)
-- [Contributing](#contributing)
-- [Terms of Service review](#terms-of-service-review)
-- [Disclaimer](#disclaimer)
+### 项目定位
 
-## Why this exists
+`freellmapizh` 是一个自托管的 OpenAI 兼容 LLM API 聚合代理。
 
-Every serious AI lab now offers a free tier — a few million tokens a month, a few thousand requests a day. On its own each tier is a toy. Stacked together, they add up to roughly **1.3 billion tokens per month** of working inference capacity, across dozens of models from small-and-fast to reasonably capable.
+它把多个模型平台的免费层、试用层或低门槛 API 入口统一到一个本地服务里，对外提供：
 
-The problem is that stacking them by hand is painful: fourteen different SDKs, fourteen different rate limits, fourteen places a request can fail. FreeLLMAPI collapses that into one OpenAI-compatible endpoint. Point any OpenAI client library at your local server, and it routes transparently across whichever providers you've added keys for.
+- `POST /v1/chat/completions`
+- `GET /v1/models`
 
-## Supported providers
+你可以把 OpenAI SDK、LangChain、LlamaIndex、Continue、Hermes、opencode 或其他 OpenAI-compatible 客户端的 `base_url` 指向这个服务，让请求自动在可用模型和可用 key 之间路由。
 
-<table>
-<tr>
-<td align="center" width="180"><a href="https://ai.google.dev"><b>Google</b><br/>Gemini 2.5 Flash · 3.x previews</a></td>
-<td align="center" width="180"><a href="https://groq.com"><b>Groq</b><br/>Llama 3.3, Llama 4, GPT-OSS, Qwen3</a></td>
-<td align="center" width="180"><a href="https://cerebras.ai"><b>Cerebras</b><br/>Qwen3 235B</a></td>
-<td align="center" width="180"><a href="https://cloud.sambanova.ai"><b>SambaNova</b><br/>DeepSeek V3.x · Llama 4 · Gemma 3</a></td>
-</tr>
-<tr>
-<td align="center"><a href="https://mistral.ai"><b>Mistral</b><br/>Large 3 · Medium 3.5 · Codestral · Devstral</a></td>
-<td align="center"><a href="https://openrouter.ai"><b>OpenRouter</b><br/>21 free-tier models</a></td>
-<td align="center"><a href="https://github.com/marketplace/models"><b>GitHub Models</b><br/>GPT-4.1 · GPT-4o</a></td>
-<td align="center"><a href="https://developers.cloudflare.com/workers-ai"><b>Cloudflare</b><br/>Kimi K2 · GLM-4.7 · GPT-OSS · Granite 4</a></td>
-</tr>
-<tr>
-<td align="center"><a href="https://cohere.com"><b>Cohere</b><br/>Command R+ · Command-A (trial)</a></td>
-<td align="center"><a href="https://docs.z.ai"><b>Z.ai (Zhipu)</b><br/>GLM-4.5 · GLM-4.7 Flash</a></td>
-<td align="center"><a href="https://build.nvidia.com"><b>NVIDIA</b><br/>NIM (disabled by default)</a></td>
-<td align="center"><a href="https://huggingface.co/docs/inference-providers"><b>HuggingFace</b><br/>Router → DeepSeek V4 · Kimi K2.6 · Qwen3</a></td>
-</tr>
-</table>
+这个项目适合：
 
-## Features
+- 个人实验
+- 学习 OpenAI-compatible API 代理如何实现
+- 聚合多个免费/试用模型做低成本测试
+- 给本地工具、Agent、IDE 插件提供一个统一模型入口
+- 研究 fallback、rate limit、key health、provider adapter 的工程实现
 
-- **OpenAI-compatible** — `POST /v1/chat/completions` and `GET /v1/models` work with the official OpenAI SDKs and any OpenAI-compatible client (LangChain, LlamaIndex, Continue, Hermes, etc.). Just change `base_url`.
-- **Streaming and non-streaming** — Server-Sent Events for `stream: true`, JSON response otherwise. Every provider adapter implements both.
-- **Tool calling** — OpenAI-style `tools` / `tool_choice` requests are passed through, and assistant `tool_calls` + `tool` role follow-up messages round-trip across providers.
-- **Automatic fallover** — If the chosen provider returns a 429, 5xx, or times out, the router skips it, puts the key on a short cooldown, and retries on the next model in your fallback chain (up to 20 attempts).
-- **Per-key rate tracking** — RPM, RPD, TPM, and TPD counters per `(platform, model, key)` so the router always picks a key that's under its caps.
-- **Sticky sessions** — Multi-turn conversations keep talking to the same model for 30 minutes to avoid the hallucination spike that comes from mid-conversation model switches.
-- **Encrypted key storage** — API keys are encrypted with AES-256-GCM before hitting SQLite; decryption happens in-memory just before a request.
-- **Unified API key** — Clients authenticate to your proxy with a single `freellmapi-…` bearer token. You never expose upstream provider keys to your apps.
-- **Health checks** — Periodic probes mark keys as `healthy`, `rate_limited`, `invalid`, or `error` so the router skips dead ones automatically.
-- **Admin dashboard** — React + Vite UI to manage keys, reorder the fallback chain, inspect analytics, and run prompts in a playground. Dark mode included.
-- **Analytics** — Per-request logging with latency, token counts, success rate, and per-provider breakdowns.
-- **Runs anywhere Node 20+ runs** — Windows, macOS, Linux servers, or a small ARM SBC (Raspberry Pi included). ~40 MB RSS at idle behind PM2 / systemd / whatever supervisor you prefer.
+不适合：
 
-## Not yet supported
+- 正式生产服务
+- 对外多用户转售
+- 稳定 SLA 场景
+- 绕过上游平台服务条款
 
-The scope is deliberately narrow. If a feature isn't on this list and isn't below, assume it isn't there yet.
+### 这次 README 审查结论
 
-- **Embeddings** (`/v1/embeddings`)
-- **Image generation** (`/v1/images/*`)
-- **Audio / speech** (`/v1/audio/*`)
-- **Vision / multimodal inputs** — message content is text-only
-- **Legacy completions** (`/v1/completions`) — only the chat endpoint is implemented
-- **Moderation** (`/v1/moderations`)
-- **`n > 1`** (multiple completions per request)
-- **Per-user billing / multi-tenant auth** — single-user by design
+原英文 README 的主体说明是有价值的，但和当前代码相比不够全面，主要问题如下：
 
-PRs that add any of these are very welcome. See [Contributing](#contributing).
+1. **Provider 列表不完整。**
+   README 仍写成 12 个 provider，但当前代码和 UI 已包含 Google、Groq、Cerebras、SambaNova、NVIDIA、Mistral、OpenRouter、GitHub Models、Cohere、Cloudflare、Zhipu、Ollama、Kilo、Pollinations、LLM7、HuggingFace 等 16 个平台类型。
 
-## Quick start
+2. **“Vision / multimodal inputs not supported” 表述需要更精确。**
+   当前代码会接受 OpenAI 的多模态 content array envelope，并把文本块提取出来；非文本块会被丢弃或转为文本处理。因此准确说法是：**接口能接收部分多模态 envelope，但实际代理仍是文本聊天，不提供真正视觉理解能力。**
 
-**Prerequisites:** Node.js 20+, npm.
+3. **路由行为比 README 描述更强。**
+   当前代码不仅做基础 fallback，还包含：
+   - `auto` 虚拟模型
+   - 显式模型 pinning
+   - sticky session
+   - 每次 429 后的动态 penalty
+   - per-key round-robin
+   - 最多 20 次 retry
+
+4. **Dashboard 功能说明可以更细。**
+   当前前端包含 Keys、Fallback、Playground、Analytics 四个主页面，支持统一 API key、provider key 健康检查、fallback 拖拽排序、token budget、请求统计和错误分布。
+
+5. **部署边界需要更强调。**
+   代码本身是单用户本地代理设计，没有多租户账号体系。README 应更明确地提醒不要把它直接暴露给公网给多人共用。
+
+6. **上游来源需要保留但不应让人误解。**
+   本仓库是 `yuanbw2025/freellmapizh`，不是原始 `tashfeenahmed/freellmapi`。中文 README 应说明这是中文整理和后续自用开发版本，同时保留原项目许可与署名。
+
+### 核心能力
+
+- **OpenAI-compatible API**
+  - `POST /v1/chat/completions`
+  - `GET /v1/models`
+  - 支持 OpenAI SDK 和常见兼容客户端。
+
+- **自动路由**
+  - `model: "auto"` 或省略 `model` 时，系统自动选择当前可用模型。
+  - 也可以显式指定某个模型 ID。
+  - 如果指定模型不存在或被禁用，会返回 `model_not_found`。
+
+- **Fallback 链**
+  - 模型按 fallback priority 排序。
+  - 某个 provider/key 遇到 429、超时、5xx、模型下线等可重试错误时，自动跳到下一个可用模型。
+  - 单次请求最多尝试 20 次。
+
+- **动态降权**
+  - 某个模型频繁 429 后会被临时 penalty，下沉到 fallback 链后面。
+  - 成功请求会逐步降低 penalty。
+  - penalty 会随时间衰减。
+
+- **Per-key 限流追踪**
+  - 按 `(platform, model, key)` 追踪 RPM、RPD、TPM、TPD。
+  - 路由时跳过已超限的 key。
+  - 429 后会给对应 model+key 设置短 cooldown。
+
+- **Sticky Session**
+  - 多轮对话会尽量保持同一个模型 30 分钟。
+  - 避免中途换模型导致上下文风格和推理能力突变。
+
+- **统一 API Key**
+  - 客户端只需要使用一个 `freellmapi-...` bearer token。
+  - 上游 provider key 不暴露给调用方。
+
+- **Provider Key 加密保存**
+  - API key 使用 AES-256-GCM 加密后写入 SQLite。
+  - 请求前在内存中解密。
+
+- **健康检查**
+  - 可以手动检查单个 key 或全部 key。
+  - 后台每 5 分钟自动检查。
+  - key 状态包括 `healthy`、`rate_limited`、`invalid`、`error`、`unknown`。
+  - 连续确认无效的 key 会被自动禁用。
+
+- **Dashboard**
+  - Keys：管理 provider key 和统一 API key。
+  - Fallback：拖拽排序模型 fallback 链，查看 token budget、动态 penalty、key 数量。
+  - Playground：通过代理实际发起 chat completion，查看路由结果。
+  - Analytics：查看请求量、成功率、token、延迟、provider/model 分布和错误。
+
+- **Tool Calling**
+  - 支持 OpenAI 风格 `tools` / `tool_choice`。
+  - assistant `tool_calls` 与 tool role follow-up 可以往返代理。
+  - Gemini 会转换为 Google function declarations / function response 格式，再转换回 OpenAI 兼容响应。
+
+- **Streaming**
+  - `stream: true` 时返回 Server-Sent Events。
+  - 非 streaming 返回普通 JSON。
+  - 流式响应开始前的错误仍可 fallback；流式开始后的错误会发送 error SSE frame。
+
+### 当前支持的平台
+
+当前代码里注册的平台包括：
+
+| Platform | 说明 |
+|---|---|
+| Google | Gemini API，使用独立适配器 |
+| Groq | OpenAI-compatible |
+| Cerebras | OpenAI-compatible |
+| SambaNova | OpenAI-compatible |
+| NVIDIA NIM | OpenAI-compatible，默认部分模型可能禁用或受 trial 限制 |
+| Mistral | OpenAI-compatible |
+| OpenRouter | OpenAI-compatible 聚合平台 |
+| GitHub Models | OpenAI-compatible |
+| Cohere | Cohere compatibility endpoint |
+| Cloudflare Workers AI | 使用 `account_id:token` 形式 |
+| Zhipu / Z.ai | OpenAI-compatible |
+| Ollama Cloud | OpenAI-compatible，部分免费模型延迟较高 |
+| Kilo Gateway | OpenAI-compatible 网关 |
+| Pollinations | OpenAI-compatible，路径带 `/openai/v1` |
+| LLM7 | OpenAI-compatible 聚合入口 |
+| HuggingFace Router | HuggingFace Inference Providers router |
+
+注意：平台是否免费、额度多少、是否需要信用卡、模型是否仍可用，都可能随时间变化。项目内置的 catalog 是工程默认值，不是稳定承诺。
+
+### 当前不支持或不完整支持
+
+- **Embeddings**：未实现 `/v1/embeddings`
+- **Images**：未实现 `/v1/images/*`
+- **Audio / Speech**：未实现 `/v1/audio/*`
+- **Moderation**：未实现 `/v1/moderations`
+- **Legacy Completions**：未实现 `/v1/completions`
+- **真正视觉理解**：可以接收部分 content array，但非文本块不会被作为真实图像输入处理
+- **多租户账号体系**：没有用户注册、权限隔离、计费系统
+- **生产 SLA**：免费层和试用层不适合生产可靠性承诺
+
+### 项目结构
+
+```text
+freellmapizh/
+├── client/                  # React + Vite dashboard
+│   └── src/pages/           # Keys / Fallback / Playground / Analytics
+├── server/                  # Express proxy server
+│   └── src/
+│       ├── app.ts           # Express app, API routes, static dashboard
+│       ├── index.ts         # server entry
+│       ├── db/              # SQLite schema, seed, migrations
+│       ├── providers/       # provider adapters
+│       ├── routes/          # /api/* and /v1/* routes
+│       ├── services/        # router, health, ratelimit
+│       └── lib/             # encryption, content helpers
+├── shared/                  # shared TypeScript types
+├── repo-assets/             # README screenshots
+├── docs/                    # docs / OG assets
+├── .env.example             # environment example
+├── package.json             # npm workspaces
+└── README.md
+```
+
+### 快速开始
+
+要求：
+
+- Node.js 20+
+- npm
 
 ```bash
-git clone https://github.com/tashfeenahmed/freellmapi.git
-cd freellmapi
+git clone https://github.com/yuanbw2025/freellmapizh.git
+cd freellmapizh
 npm install
-
-# Generate an encryption key for at-rest key storage
 cp .env.example .env
-echo "ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" >> .env
+```
 
-# Start server + dashboard together
+生成 32 字节加密密钥：
+
+```bash
+node -e "console.log('ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toString('hex'))" >> .env
+```
+
+启动开发环境：
+
+```bash
 npm run dev
 ```
 
-Open http://localhost:5173 (the Vite dev UI), add your provider keys on the **Keys** page, reorder the **Fallback Chain** to taste, and grab your unified API key from the **Keys** page header. That unified key is what you point your OpenAI SDK at.
+默认端口：
 
-For a production build:
+- Server: `http://localhost:3001`
+- Dashboard: `http://localhost:5173`
+- Proxy endpoint: `http://localhost:3001/v1/chat/completions`
+
+打开 Dashboard 后：
+
+1. 到 **Keys** 页面添加 provider key。
+2. 复制页面顶部的统一 API key。
+3. 到 **Fallback** 页面调整模型优先级。
+4. 到 **Playground** 页面测试请求。
+
+### 生产构建
 
 ```bash
 npm run build
-node server/dist/index.js     # server + dashboard both served on :3001
+npm run start -w server
 ```
 
-## Using the API
+构建后 server 会同时提供：
 
-Any OpenAI-compatible client works. Examples:
+- API routes
+- OpenAI-compatible `/v1/*`
+- 已构建的 dashboard 静态页面
 
-**Python**
+默认监听：
+
+```text
+http://0.0.0.0:3001
+```
+
+### 环境变量
+
+| 变量 | 说明 |
+|---|---|
+| `ENCRYPTION_KEY` | 必填，64 位 hex 字符串，用于 AES-256-GCM 加密 provider keys |
+| `PORT` | server 端口，默认 `3001` |
+| `DASHBOARD_ORIGINS` | 额外允许的 dashboard CORS origin，逗号分隔 |
+| `VITE_BASE` | client 构建 base path，默认 `/` |
+
+### API 使用示例
+
+#### Python
 
 ```python
 from openai import OpenAI
@@ -131,14 +270,16 @@ client = OpenAI(
 )
 
 resp = client.chat.completions.create(
-    model="auto",  # let the router pick; or specify e.g. "gemini-2.5-flash"
-    messages=[{"role": "user", "content": "Summarise the fall of Rome in one sentence."}],
+    model="auto",
+    messages=[
+        {"role": "user", "content": "用一句话解释什么是 fallback router"}
+    ],
 )
+
 print(resp.choices[0].message.content)
-print("Routed via:", resp.headers.get("x-routed-via"))
 ```
 
-**curl**
+#### curl
 
 ```bash
 curl http://localhost:3001/v1/chat/completions \
@@ -146,25 +287,26 @@ curl http://localhost:3001/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "auto",
-    "messages": [{"role": "user", "content": "hi"}]
+    "messages": [
+      { "role": "user", "content": "hi" }
+    ]
   }'
 ```
 
-**Streaming**
+#### Streaming
 
 ```python
 stream = client.chat.completions.create(
     model="auto",
-    messages=[{"role": "user", "content": "Stream me a haiku about SQLite."}],
+    messages=[{"role": "user", "content": "写一首关于 SQLite 的短诗"}],
     stream=True,
 )
+
 for chunk in stream:
     print(chunk.choices[0].delta.content or "", end="", flush=True)
 ```
 
-**Tool calling**
-
-Pass OpenAI-style `tools` and `tool_choice`; the assistant response round-trips back through the proxy exactly like the OpenAI API. Multi-step flows (assistant `tool_calls` → `tool` role follow-up → final answer) work across every provider the router can reach.
+#### Tool Calling
 
 ```python
 tools = [{
@@ -180,160 +322,264 @@ tools = [{
     },
 }]
 
-# 1. Model asks for a tool call
 first = client.chat.completions.create(
     model="auto",
-    messages=[{"role": "user", "content": "What's the weather in Karachi?"}],
+    messages=[{"role": "user", "content": "What's the weather in Shanghai?"}],
     tools=tools,
     tool_choice="required",
 )
+
 call = first.choices[0].message.tool_calls[0]
 
-# 2. You execute the tool, feed the result back
 final = client.chat.completions.create(
     model="auto",
     messages=[
-        {"role": "user", "content": "What's the weather in Karachi?"},
+        {"role": "user", "content": "What's the weather in Shanghai?"},
         first.choices[0].message,
-        {"role": "tool", "tool_call_id": call.id, "content": '{"temp_c": 32, "cond": "sunny"}'},
+        {"role": "tool", "tool_call_id": call.id, "content": "{\"temp_c\": 26, \"cond\": \"cloudy\"}"},
     ],
     tools=tools,
 )
+
 print(final.choices[0].message.content)
 ```
 
-Works with `stream=True` as well — you'll get `delta.tool_calls` chunks followed by a `finish_reason: "tool_calls"` close. Under the hood, OpenAI-compatible providers (Groq, Cerebras, SambaNova, Mistral, OpenRouter, GitHub Models, HuggingFace, Cloudflare, Cohere compat) get the request passed through; Gemini requests get translated into Google's `functionDeclarations` / `functionResponse` shape and the response is translated back.
+### 响应头
 
-Every response carries an `X-Routed-Via: <platform>/<model>` header so you can see which provider actually served each call. If a request fell over between providers, you'll also see `X-Fallback-Attempts: N`.
+每个成功响应会包含：
 
-## Screenshots
+```text
+X-Routed-Via: <platform>/<model>
+```
 
-### Keys
+发生 fallback 后还会包含：
 
-Manage provider credentials and grab the unified API key your apps connect with. Each key shows a status dot and when it was last health-checked.
+```text
+X-Fallback-Attempts: <number>
+```
+
+### 截图
+
+#### Keys
 
 ![Keys page](repo-assets/keys.png)
 
-### Playground
+#### Fallback Chain
 
-Send a chat completion through the router and see which provider served it, with the model ID and latency printed right on the message.
+![Fallback chain](repo-assets/fallback-chain.png)
+
+#### Playground
 
 ![Playground page](repo-assets/playground.png)
 
-### Analytics
-
-Request volume, success rate, tokens in and out, average latency, and per-provider breakdowns over 24h / 7d / 30d windows.
+#### Analytics
 
 ![Analytics page](repo-assets/analytics.png)
 
-## How it works
+### 使用边界和风险
 
-```
-┌──────────────────┐   Bearer freellmapi-…   ┌─────────────────────────┐
-│  OpenAI SDK /    │ ──────────────────────▶ │  Express proxy (:3001)  │
-│  curl / any      │ ◀────────────────────── │  /v1/chat/completions   │
-│  OpenAI client   │      streamed tokens    └────────────┬────────────┘
-└──────────────────┘                                      │
-                                                          ▼
-                             ┌────────────────────────────────────────────────┐
-                             │  Router                                        │
-                             │   1. Pick highest-priority model that          │
-                             │      (a) has a healthy key and                 │
-                             │      (b) is under all its rate limits.         │
-                             │   2. Decrypt key, call provider SDK.           │
-                             │   3. On 429/5xx → cooldown + retry next model. │
-                             └────────────────────────────────────────────────┘
-                                          │
-   ┌──────────────┬────────────┬──────────┴─────────┬─────────────┬──────────┐
-   ▼              ▼            ▼                    ▼             ▼          ▼
- Google         Groq        Cerebras           OpenRouter        HF       …10 more
-```
+- 免费层会变化，模型和额度随时可能调整。
+- 免费层不是 SLA，不能按生产基础设施对待。
+- 晚些时候高优先级模型可能达到额度，路由会降级到更弱模型。
+- 不同 provider 延迟差异很大。
+- 不要把 provider key 暴露给前端或第三方。
+- 不要把这个代理公开给多人共用。
+- 不要拿免费层做付费产品后端。
+- 每个上游平台的 ToS 仍然适用。
 
-- **Router** (`server/src/services/router.ts`) — picks a model per request.
-- **Rate-limit ledger** (`server/src/services/ratelimit.ts`) — in-memory RPM/RPD/TPM/TPD counters backed by SQLite, with cooldowns on 429s.
-- **Provider adapters** (`server/src/providers/*.ts`) — one file per provider, implementing the `Provider` base class: `chatCompletion()` and `streamChatCompletion()`.
-- **Health service** (`server/src/services/health.ts`) — periodic probe keeps key status fresh.
-- **Dashboard** (`client/`) — React + Vite + shadcn/ui admin surface.
-- **Storage** — SQLite (`better-sqlite3`) with AES-256-GCM envelope encryption for keys.
-
-## Limitations
-
-Stacking free tiers has real trade-offs. Be honest with yourself about them:
-
-- **No frontier models.** The free-tier catalog tops out around Llama 3.3 70B, GLM-4.5, Qwen 3 Coder, and Gemini 2.5 Pro. You will not get GPT-5 or Claude Opus class reasoning through this. For hard problems, pay for a real API.
-- **Intelligence degrades as the day progresses.** Your top-ranked models (usually Gemini 2.5 Pro, GPT-4o via GitHub Models) have the lowest daily caps. Once they hit their limits, the router falls down your priority chain to smaller/weaker models. Expect the effective intelligence of the endpoint to drop in the late hours of each day — then reset at UTC midnight.
-- **Latency is highly variable.** Cerebras and Groq are extremely fast; others are not. You get whichever one is available.
-- **Free tiers can change without notice.** Providers regularly tighten, loosen, or remove free tiers. When that happens you'll see 429s or auth errors until you update the catalog. Re-seed scripts live in `server/src/scripts/`.
-- **No SLA, by definition.** If you need reliability, use a paid provider with a contract.
-- **Local-first.** There's no multi-tenant auth. Run this for yourself; don't expose it to the internet.
-
-## Contributing
-
-Contributors very welcome! Good first PRs:
-
-- **Add a provider** — copy `server/src/providers/openai-compat.ts` as a template, wire it into `server/src/providers/index.ts`, seed its models in `server/src/db/index.ts`, add a test in `server/src/__tests__/providers/`.
-- **Add an endpoint** — embeddings, images, moderations. The provider base class can grow new methods; adapters declare which they support.
-- **Improve the router** — cost-aware routing (cheapest-healthy-fastest tradeoffs), better latency-weighted priority, regional pinning.
-- **Dashboard polish** — charts on the Analytics page, key rotation UX, batch import of keys from `.env`.
-- **Docs** — more examples, client library snippets for Go/Rust/etc., a deployment recipe for Docker or Fly.
-
-**Development loop:**
+### 开发
 
 ```bash
 npm install
-npm run dev      # server on :3001, dashboard on :5173, both with HMR
-npm test         # vitest — 75 tests across providers, routes, router, ratelimit
+npm run dev
+npm test
+npm run build
 ```
 
-PRs should include a test, keep the existing test suite green, and match the `.editorconfig` / tsconfig defaults already in the repo. Issues and discussions are open.
+常见开发位置：
 
-### Contributors
+- `server/src/providers/`：新增 provider adapter
+- `server/src/db/index.ts`：新增模型 catalog 或 migration
+- `server/src/services/router.ts`：路由策略
+- `server/src/services/ratelimit.ts`：限流账本
+- `server/src/services/health.ts`：key 健康检查
+- `client/src/pages/`：Dashboard 页面
+- `shared/types.ts`：前后端共享类型
 
-<a href="https://github.com/moaaz12-web"><img src="https://images.weserv.nl/?url=github.com/moaaz12-web.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@moaaz12-web" /></a>
-<a href="https://github.com/lukasulc"><img src="https://images.weserv.nl/?url=github.com/lukasulc.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@lukasulc" /></a>
-<a href="https://github.com/VinhPhamAI"><img src="https://images.weserv.nl/?url=github.com/VinhPhamAI.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@VinhPhamAI" /></a>
-<a href="https://github.com/deadc"><img src="https://images.weserv.nl/?url=github.com/deadc.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@deadc" /></a>
-<a href="https://github.com/zhangyu1324"><img src="https://images.weserv.nl/?url=github.com/zhangyu1324.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@zhangyu1324" /></a>
-<a href="https://github.com/jtbrennan-git"><img src="https://images.weserv.nl/?url=github.com/jtbrennan-git.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@jtbrennan-git" /></a>
-<a href="https://github.com/praveenkumarpranjal"><img src="https://images.weserv.nl/?url=github.com/praveenkumarpranjal.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@praveenkumarpranjal" /></a>
-<a href="https://github.com/nordbyte"><img src="https://images.weserv.nl/?url=github.com/nordbyte.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@nordbyte" /></a>
-<a href="https://github.com/mybropro"><img src="https://images.weserv.nl/?url=github.com/mybropro.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@mybropro" /></a>
-<a href="https://github.com/danscMax"><img src="https://images.weserv.nl/?url=github.com/danscMax.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@danscMax" /></a>
-<a href="https://github.com/jhash"><img src="https://images.weserv.nl/?url=github.com/jhash.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@jhash" /></a>
-<a href="https://github.com/JammyJames1234"><img src="https://images.weserv.nl/?url=github.com/JammyJames1234.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@JammyJames1234" /></a>
+### 上游来源
 
-## Terms of Service review
+本仓库基于 FreeLLMAPI 项目继续整理和中文化，用于个人学习和后续开发。
 
-A self-hosted, single-user, personal-use setup was re-reviewed against each provider's ToS (May 2026). Summary:
+原项目 README 中的贡献者、服务条款审查和免责声明有参考价值，但本 README 按当前仓库代码重新整理，避免过时平台列表和能力描述误导使用者。
 
-| Provider | Verdict | Notes |
-|---|---|---|
-| Google Gemini | ⚠️ Caution | March 2026 ToS narrows scope to *"professional or business purposes, not for consumer use"* — a self-hosted developer proxy is still defensible, but the clause is new. |
-| Groq | ✅ Likely OK | GroqCloud Services Agreement permits Customer Application integration. |
-| Cerebras | ✅ Likely OK | Permitted; explicitly forbids selling/transferring API keys. |
-| Mistral | ✅ Likely OK | APIs allowed for personal/internal business use. |
-| OpenRouter | ✅ Likely OK | April 2026 ToS sharpens the no-resale / no-competing-service clause; private single-user proxy still fine. |
-| SambaNova | ⚠️ Ambiguous | EULA §1.5(c) blocks resale and "service bureau" use; single-user with no third-party access is fine. |
-| Cloudflare Workers AI | ⚠️ Ambiguous | No anti-proxy clause; covered by general Self-Serve Subscription Agreement. |
-| NVIDIA NIM | ⚠️ Caution | Trial ToS §1.2 / §1.4: *"evaluation only, not production."* Disabled in default catalog. |
-| GitHub Models | ⚠️ Caution | Free tier explicitly scoped to *"experimentation"* and *"prototyping."* |
-| Cohere | ❌ Avoid | Terms §14 still forbids *"personal, family or household purposes."* |
-| Zhipu (open.bigmodel.cn) | ✅ Likely OK | Personal/non-commercial research carve-out still in the platform docs. |
-| Z.ai (api.z.ai) | ⚠️ Caution | New row — Singapore entity (distinct from Zhipu CN). §III.3(l) anti-traffic-redirect clause could plausibly be read against a proxy; no explicit personal-use carve-out. |
-| Ollama Cloud | ✅ Likely OK | New row — Free plan permits cloud-model access (1 concurrent, 5-hour session caps). No anti-proxy / anti-resale clauses found. *(Integration tracked in #14.)* |
+### License
 
-Rules of thumb that keep most providers happy: **one account per provider**, **no reselling**, **no sharing your endpoint with other humans**, **don't hammer a free tier as a paid production backend**. This is informational, not legal advice — read each provider's ToS and make your own call.
+[MIT](./LICENSE)
 
-Removed since the April 2026 review: Hugging Face, Moonshot, and MiniMax direct integrations were dropped from the catalog (HF — tool-call format issues; Moonshot — moved to paid only; MiniMax — superseded by the OpenRouter `minimax/minimax-m2.5:free` route).
+---
 
-## Disclaimer
+## English
 
-**This project is for personal experimentation and learning, not production.** Free tiers exist so developers can prototype against them; they aren't a stable, supported inference substrate and shouldn't be treated as one. If you build something real on top of FreeLLMAPI, swap in a paid API before you ship. Your relationship with each upstream provider is governed by the terms you accepted when you created your account — those terms still apply when the traffic is proxied through this project, and you're responsible for complying with them.
+### What is this?
 
-## Star History
+`freellmapizh` is a self-hosted OpenAI-compatible LLM proxy.
 
-[![Star History Chart](https://api.star-history.com/chart?repos=tashfeenahmed/freellmapi&type=date&legend=top-left)](https://www.star-history.com/?repos=tashfeenahmed%2Ffreellmapi&type=date&legend=top-left)
+It aggregates multiple free-tier, trial-tier, or low-barrier LLM providers behind one local API:
 
-## License
+- `POST /v1/chat/completions`
+- `GET /v1/models`
+
+Any OpenAI-compatible client can point its `base_url` to this server and let the router select a working model/key automatically.
+
+This project is best used for:
+
+- personal experimentation
+- learning how an OpenAI-compatible proxy works
+- low-cost testing across free or trial model providers
+- giving local tools, IDE agents, and automation scripts one unified LLM endpoint
+- studying fallback routing, rate-limit tracking, key health, and provider adapters
+
+It is not designed for:
+
+- production workloads
+- public multi-user resale
+- SLA-sensitive systems
+- bypassing upstream provider terms
+
+### README completeness review
+
+The previous English README was useful, but no longer fully matched the current codebase:
+
+1. The provider list was incomplete. The code currently includes Google, Groq, Cerebras, SambaNova, NVIDIA, Mistral, OpenRouter, GitHub Models, Cohere, Cloudflare, Zhipu, Ollama, Kilo, Pollinations, LLM7, and HuggingFace.
+2. Vision/multimodal support needed a more precise statement. The proxy accepts OpenAI-style content arrays, but non-text blocks are not treated as real image/audio inputs.
+3. Routing behavior is richer than previously documented: `auto` model, explicit model pinning, sticky sessions, dynamic 429 penalties, per-key round-robin, cooldowns, and up to 20 retries.
+4. Dashboard features needed more detail: Keys, Fallback, Playground, Analytics, unified API key, health checks, token budget, and error views.
+5. Deployment boundaries needed to be clearer. This remains a local-first, single-user proxy.
+
+### Core features
+
+- OpenAI-compatible `/v1/chat/completions` and `/v1/models`
+- Streaming and non-streaming responses
+- OpenAI-style tool calling
+- Automatic fallback across providers and keys
+- `model: "auto"` virtual model
+- Explicit model pinning when a model ID is provided
+- Sticky sessions for multi-turn conversations
+- Per-key RPM/RPD/TPM/TPD tracking
+- Cooldowns and dynamic penalties after rate limits
+- Encrypted provider key storage using AES-256-GCM
+- One unified `freellmapi-...` API key for clients
+- Health checks for provider keys
+- React/Vite dashboard with Keys, Fallback, Playground, and Analytics pages
+- SQLite storage
+- Node.js 20+ runtime
+
+### Supported platforms in the current code
+
+| Platform | Notes |
+|---|---|
+| Google | Gemini API, custom adapter |
+| Groq | OpenAI-compatible |
+| Cerebras | OpenAI-compatible |
+| SambaNova | OpenAI-compatible |
+| NVIDIA NIM | OpenAI-compatible; some models may be trial-limited or disabled |
+| Mistral | OpenAI-compatible |
+| OpenRouter | OpenAI-compatible aggregator |
+| GitHub Models | OpenAI-compatible |
+| Cohere | Cohere compatibility endpoint |
+| Cloudflare Workers AI | Uses `account_id:token` |
+| Zhipu / Z.ai | OpenAI-compatible |
+| Ollama Cloud | OpenAI-compatible; some free models can be slow |
+| Kilo Gateway | OpenAI-compatible gateway |
+| Pollinations | OpenAI-compatible endpoint under `/openai/v1` |
+| LLM7 | OpenAI-compatible gateway |
+| HuggingFace Router | HuggingFace Inference Providers router |
+
+Provider limits, free tiers, and model availability can change without notice.
+
+### Not supported or only partially supported
+
+- `/v1/embeddings`
+- `/v1/images/*`
+- `/v1/audio/*`
+- `/v1/moderations`
+- legacy `/v1/completions`
+- real vision understanding
+- multi-tenant user accounts
+- production SLA
+
+### Quick start
+
+```bash
+git clone https://github.com/yuanbw2025/freellmapizh.git
+cd freellmapizh
+npm install
+cp .env.example .env
+node -e "console.log('ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toString('hex'))" >> .env
+npm run dev
+```
+
+Default URLs:
+
+- Server: `http://localhost:3001`
+- Dashboard: `http://localhost:5173`
+- Proxy endpoint: `http://localhost:3001/v1/chat/completions`
+
+### Production build
+
+```bash
+npm run build
+npm run start -w server
+```
+
+The server serves both the API and the built dashboard on port `3001` by default.
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `ENCRYPTION_KEY` | Required, 64 hex chars, used for AES-256-GCM provider key encryption |
+| `PORT` | Server port, default `3001` |
+| `DASHBOARD_ORIGINS` | Additional allowed dashboard CORS origins, comma-separated |
+| `VITE_BASE` | Client build base path, default `/` |
+
+### API example
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:3001/v1",
+    api_key="freellmapi-your-unified-key",
+)
+
+resp = client.chat.completions.create(
+    model="auto",
+    messages=[{"role": "user", "content": "Explain fallback routing in one sentence."}],
+)
+
+print(resp.choices[0].message.content)
+```
+
+### Development
+
+```bash
+npm install
+npm run dev
+npm test
+npm run build
+```
+
+Common files:
+
+- `server/src/providers/` for provider adapters
+- `server/src/db/index.ts` for model catalog and migrations
+- `server/src/services/router.ts` for routing logic
+- `server/src/services/ratelimit.ts` for rate-limit tracking
+- `server/src/services/health.ts` for key health checks
+- `client/src/pages/` for dashboard pages
+- `shared/types.ts` for shared frontend/backend types
+
+### License
 
 [MIT](./LICENSE)
