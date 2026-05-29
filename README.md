@@ -222,6 +222,8 @@ npm run dev
 - Dashboard: `http://localhost:5173`
 - Proxy endpoint: `http://localhost:3001/v1/chat/completions`
 
+`ENCRYPTION_KEY` 是启动必需项。只有在 `DEV_MODE=true` 且 `NODE_ENV` 不是 `production` 时，server 才会退回使用数据库里保存的开发密钥；不要用这个开发 fallback 保存真实 provider key。
+
 打开 Dashboard 后：
 
 1. 到 **Keys** 页面添加 provider key。
@@ -391,9 +393,9 @@ X-Fallback-Attempts: <number>
 
 ```bash
 npm install
-npm run dev
-npm test
-npm run build
+npm run dev      # server on :3001, dashboard on :5173, both with HMR
+npm test         # server vitest; also runs client tests if the workspace adds them
+npm run build    # compile server and dashboard
 ```
 
 常见开发位置：
@@ -524,6 +526,8 @@ Default URLs:
 - Server: `http://localhost:3001`
 - Dashboard: `http://localhost:5173`
 - Proxy endpoint: `http://localhost:3001/v1/chat/completions`
+
+`ENCRYPTION_KEY` is required for startup. The server only falls back to a database-stored development key when `DEV_MODE=true` and `NODE_ENV` is not `production`; do not use that fallback with real provider keys.
 
 ### Production build
 
